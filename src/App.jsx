@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, LogOut, Plus, Trash2, Check, X, Clock, TrendingUp } from 'lucide-react';
+import { Download, Upload, LogOut, Plus, Trash2, Check, X, Clock, TrendingUp, MessageSquare, Filter, ArrowUpDown } from 'lucide-react';
 
 const SupplierTracker = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -11,8 +11,16 @@ const SupplierTracker = () => {
   const [editingId, setEditingId] = useState(null);
   const [editingData, setEditingData] = useState({});
   const [showUpload, setShowUpload] = useState(false);
+  const [showImportList, setShowImportList] = useState(false);
   const [lastBackup, setLastBackup] = useState(null);
   const [saveStatus, setSaveStatus] = useState('');
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [currentNoteSupplier, setCurrentNoteSupplier] = useState(null);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState('asc');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterNewSupplier, setFilterNewSupplier] = useState('all');
 
   // Load data from storage on mount
   useEffect(() => {
@@ -76,12 +84,12 @@ const SupplierTracker = () => {
       }
     };
 
-    const interval = setInterval(checkBackup, 60000); // Check every minute
+    const interval = setInterval(checkBackup, 60000);
     return () => clearInterval(interval);
   }, [suppliers, lastBackup]);
 
   const handleLogin = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (loginPwd === 'apvan2025' && loginName.trim()) {
       setIsLoggedIn(true);
       setCurrentUser(loginName.trim());
@@ -106,6 +114,8 @@ const SupplierTracker = () => {
       insuranceLiability: '',
       gstNumber: '',
       wcbClearance: '',
+      newSupplier: 'Yes',
+      notes: [],
       lastModifiedTime: new Date().toISOString(),
       lastModifiedUser: currentUser,
       completed: false
@@ -116,8 +126,10 @@ const SupplierTracker = () => {
   };
 
   const deleteSupplier = (id) => {
-    if (confirm('Are you sure you want to delete this supplier?')) {
+    const confirmDelete = window.confirm('Are you sure you want to delete this supplier?');
+    if (confirmDelete) {
       setSuppliers(suppliers.filter(s => s.id !== id));
+      setSaveStatus('Supplier deleted');
     }
   };
 
@@ -135,6 +147,7 @@ const SupplierTracker = () => {
 
     const updatedSupplier = {
       ...editingData,
+      newSupplier: editingData.newSupplier || 'No', // Ensure newSupplier is saved
       lastModifiedTime: new Date().toISOString(),
       lastModifiedUser: currentUser,
       completed
@@ -145,11 +158,49 @@ const SupplierTracker = () => {
     ));
     setEditingId(null);
     setEditingData({});
+    setSaveStatus('Changes saved successfully');
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditingData({});
+  };
+
+  const openNoteModal = (supplier) => {
+    setCurrentNoteSupplier(supplier);
+    setNewNoteText('');
+    setShowNoteModal(true);
+  };
+
+  const addNote = () => {
+    if (!newNoteText.trim()) {
+      alert('Please enter a note');
+      return;
+    }
+
+    const note = {
+      id: Date.now(),
+      text: newNoteText.trim(),
+      user: currentUser,
+      timestamp: new Date().toISOString()
+    };
+
+    const updatedSuppliers = suppliers.map(s => {
+      if (s.id === currentNoteSupplier.id) {
+        return {
+          ...s,
+          notes: [...(s.notes || []), note],
+          lastModifiedTime: new Date().toISOString(),
+          lastModifiedUser: currentUser
+        };
+      }
+      return s;
+    });
+
+    setSuppliers(updatedSuppliers);
+    setShowNoteModal(false);
+    setNewNoteText('');
+    setCurrentNoteSupplier(null);
   };
 
   const exportCSV = () => {
@@ -159,6 +210,8 @@ const SupplierTracker = () => {
       'Insurance Liability',
       'GST Number',
       'WCB Clearance Letter',
+      'New Supplier',
+      'Notes',
       'Last Modified Time',
       'Last Modified User',
       'Completed'
@@ -170,6 +223,8 @@ const SupplierTracker = () => {
       s.insuranceLiability,
       s.gstNumber,
       s.wcbClearance,
+      s.newSupplier,
+      (s.notes || []).map(n => `[${new Date(n.timestamp).toLocaleString()}] ${n.user}: ${n.text}`).join(' | '),
       new Date(s.lastModifiedTime).toLocaleString(),
       s.lastModifiedUser,
       s.completed ? 'Yes' : 'No'
@@ -177,7 +232,7 @@ const SupplierTracker = () => {
 
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -192,8 +247,6 @@ const SupplierTracker = () => {
     exportCSV();
     setLastBackup(new Date().toDateString());
     saveData();
-    
-    // In a production environment, you would send email here
     console.log('Backup performed and email would be sent to zeyong.jin@ranchogroup.com');
   };
 
@@ -206,12 +259,19 @@ const SupplierTracker = () => {
       try {
         const text = event.target.result;
         const lines = text.split('\n').filter(line => line.trim());
-        const headers = lines[0].split(',');
         
         const importedSuppliers = lines.slice(1).map((line, index) => {
           const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g).map(v => 
-            v.replace(/^"|"$/g, '').trim()
+            v.replace(/^"|"$/g, '').replace(/""/g, '"').trim()
           );
+          
+          const notesText = values[6] || '';
+          const notes = notesText ? notesText.split(' | ').map((noteStr, i) => ({
+            id: Date.now() + i,
+            text: noteStr.substring(noteStr.indexOf(': ') + 2),
+            user: noteStr.match(/\] (.*?):/)?.[1] || 'Unknown',
+            timestamp: new Date().toISOString()
+          })) : [];
           
           return {
             id: Date.now() + index,
@@ -220,15 +280,17 @@ const SupplierTracker = () => {
             insuranceLiability: values[2] || '',
             gstNumber: values[3] || '',
             wcbClearance: values[4] || '',
+            newSupplier: values[5] || 'No',
+            notes: notes,
             lastModifiedTime: new Date().toISOString(),
             lastModifiedUser: currentUser,
-            completed: values[7] === 'Yes'
+            completed: values[9] === 'Yes'
           };
         });
 
         setSuppliers(importedSuppliers);
         setShowUpload(false);
-        alert('Data imported successfully!');
+        alert('Backup restored successfully!');
       } catch (error) {
         alert('Error importing CSV. Please check the file format.');
         console.error(error);
@@ -237,9 +299,85 @@ const SupplierTracker = () => {
     reader.readAsText(file);
   };
 
+  const importSupplierList = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const lines = text.split('\n').filter(line => line.trim());
+        
+        // Skip header row and import
+        const newSuppliers = lines.slice(1).map((line, index) => {
+          const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)?.map(v => 
+            v.replace(/^"|"$/g, '').replace(/""/g, '"').trim()
+          ) || [];
+          
+          return {
+            id: Date.now() + index + Math.random(),
+            supplierName: values[0] || '',
+            contactInfo: values[1] || '',
+            insuranceLiability: '',
+            gstNumber: '',
+            wcbClearance: '',
+            newSupplier: 'No', // All imported suppliers marked as "No"
+            notes: [],
+            lastModifiedTime: new Date().toISOString(),
+            lastModifiedUser: currentUser,
+            completed: false
+          };
+        });
+
+        // Add to existing suppliers
+        setSuppliers([...suppliers, ...newSuppliers]);
+        setShowImportList(false);
+        alert(`${newSuppliers.length} suppliers imported successfully!`);
+      } catch (error) {
+        alert('Error importing supplier list. Please check the file format.');
+        console.error(error);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const getFilteredAndSortedSuppliers = () => {
+    let filtered = [...suppliers];
+
+    // Apply filters
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(s => 
+        filterStatus === 'completed' ? s.completed : !s.completed
+      );
+    }
+
+    if (filterNewSupplier !== 'all') {
+      filtered = filtered.filter(s => s.newSupplier === filterNewSupplier);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let compareValue = 0;
+      
+      if (sortBy === 'name') {
+        compareValue = (a.supplierName || '').localeCompare(b.supplierName || '');
+      } else if (sortBy === 'status') {
+        compareValue = (a.completed === b.completed) ? 0 : a.completed ? -1 : 1;
+      } else if (sortBy === 'newSupplier') {
+        compareValue = (a.newSupplier || '').localeCompare(b.newSupplier || '');
+      }
+
+      return sortOrder === 'asc' ? compareValue : -compareValue;
+    });
+
+    return filtered;
+  };
+
   const completedCount = suppliers.filter(s => s.completed).length;
   const totalCount = suppliers.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const filteredSuppliers = getFilteredAndSortedSuppliers();
 
   if (!isLoggedIn) {
     return (
@@ -253,7 +391,7 @@ const SupplierTracker = () => {
             <p className="text-gray-600">Compliance Management System</p>
           </div>
           
-          <form onSubmit={handleLogin} className="space-y-6">
+          <div className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Name
@@ -264,7 +402,6 @@ const SupplierTracker = () => {
                 onChange={(e) => setLoginName(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="Enter your name"
-                required
               />
             </div>
             
@@ -276,19 +413,19 @@ const SupplierTracker = () => {
                 type="password"
                 value={loginPwd}
                 onChange={(e) => setLoginPwd(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="Enter password"
-                required
               />
             </div>
             
             <button
-              type="submit"
+              onClick={handleLogin}
               className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-lg"
             >
               Sign In
             </button>
-          </form>
+          </div>
         </div>
       </div>
     );
@@ -296,7 +433,7 @@ const SupplierTracker = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
@@ -369,15 +506,22 @@ const SupplierTracker = () => {
           )}
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons and Filters */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex gap-3 flex-wrap mb-4">
             <button
               onClick={addSupplier}
               className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-md"
             >
               <Plus className="w-5 h-5" />
               Add Supplier
+            </button>
+            <button
+              onClick={() => setShowImportList(!showImportList)}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md"
+            >
+              <Upload className="w-5 h-5" />
+              Import Supplier List
             </button>
             <button
               onClick={exportCSV}
@@ -391,15 +535,35 @@ const SupplierTracker = () => {
               className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-md"
             >
               <Upload className="w-5 h-5" />
-              Import Backup
+              Restore Backup
             </button>
           </div>
 
-          {showUpload && (
-            <div className="mt-4 p-4 bg-purple-50 rounded-lg">
+          {showImportList && (
+            <div className="mb-4 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Upload CSV Backup File
+                📋 Upload Supplier List CSV (Supplier Name, Contact Info)
               </label>
+              <p className="text-sm text-gray-600 mb-3">
+                Upload a CSV with columns: Supplier Name, Contact Info. All suppliers will be marked as "No" in New Supplier column.
+              </p>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={importSupplierList}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+              />
+            </div>
+          )}
+
+          {showUpload && (
+            <div className="mb-4 p-4 bg-purple-50 rounded-lg border-2 border-purple-200">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                🔄 Restore from Backup CSV
+              </label>
+              <p className="text-sm text-gray-600 mb-3">
+                Upload a previously exported backup file to restore all data.
+              </p>
               <input
                 type="file"
                 accept=".csv"
@@ -408,6 +572,60 @@ const SupplierTracker = () => {
               />
             </div>
           )}
+
+          {/* Filters and Sorting */}
+          <div className="flex gap-4 flex-wrap items-center pt-4 border-t">
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-gray-600" />
+              <span className="font-semibold text-gray-700">Filters:</span>
+            </div>
+            
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="incomplete">Incomplete</option>
+            </select>
+
+            <select
+              value={filterNewSupplier}
+              onChange={(e) => setFilterNewSupplier(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Suppliers</option>
+              <option value="Yes">New Suppliers</option>
+              <option value="No">Existing Suppliers</option>
+            </select>
+
+            <div className="flex items-center gap-2 ml-4">
+              <ArrowUpDown className="w-5 h-5 text-gray-600" />
+              <span className="font-semibold text-gray-700">Sort by:</span>
+            </div>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="name">Supplier Name</option>
+              <option value="status">Completion Status</option>
+              <option value="newSupplier">New Supplier</option>
+            </select>
+
+            <button
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              {sortOrder === 'asc' ? '↑ Ascending' : '↓ Descending'}
+            </button>
+
+            <div className="ml-auto text-sm text-gray-600">
+              Showing {filteredSuppliers.length} of {totalCount} suppliers
+            </div>
+          </div>
         </div>
 
         {/* Suppliers Table */}
@@ -419,29 +637,31 @@ const SupplierTracker = () => {
                   <th className="px-4 py-4 text-left text-sm font-semibold">Status</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">Supplier Name</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">Contact Info</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Insurance Liability</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">Insurance</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">GST Number</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">WCB Clearance</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">New Supplier</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">Notes</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">Last Modified</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">Modified By</th>
                   <th className="px-4 py-4 text-center text-sm font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {suppliers.length === 0 ? (
+                {filteredSuppliers.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
-                      No suppliers yet. Click "Add Supplier" to get started.
+                    <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
+                      {suppliers.length === 0 
+                        ? "No suppliers yet. Click 'Add Supplier' to get started."
+                        : "No suppliers match the current filters."}
                     </td>
                   </tr>
                 ) : (
-                  suppliers.map((supplier) => (
+                  filteredSuppliers.map((supplier) => (
                     <tr key={supplier.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          supplier.completed 
-                            ? 'bg-green-100' 
-                            : 'bg-red-100'
+                          supplier.completed ? 'bg-green-100' : 'bg-red-100'
                         }`}>
                           {supplier.completed ? (
                             <Check className="w-5 h-5 text-green-600" />
@@ -497,6 +717,25 @@ const SupplierTracker = () => {
                               placeholder="WCB #"
                             />
                           </td>
+                          <td className="px-4 py-4">
+                            <select
+                              value={editingData.newSupplier}
+                              onChange={(e) => setEditingData({...editingData, newSupplier: e.target.value})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                            >
+                              <option value="Yes">Yes</option>
+                              <option value="No">No</option>
+                            </select>
+                          </td>
+                          <td className="px-4 py-4">
+                            <button
+                              onClick={() => openNoteModal(supplier)}
+                              className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                              {(supplier.notes || []).length}
+                            </button>
+                          </td>
                           <td className="px-4 py-4 text-sm text-gray-600">
                             {new Date(supplier.lastModifiedTime).toLocaleString()}
                           </td>
@@ -527,6 +766,24 @@ const SupplierTracker = () => {
                           <td className="px-4 py-4 text-gray-700">{supplier.insuranceLiability}</td>
                           <td className="px-4 py-4 text-gray-700">{supplier.gstNumber}</td>
                           <td className="px-4 py-4 text-gray-700">{supplier.wcbClearance}</td>
+                          <td className="px-4 py-4">
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              supplier.newSupplier === 'Yes' 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {supplier.newSupplier}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <button
+                              onClick={() => openNoteModal(supplier)}
+                              className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                              {(supplier.notes || []).length}
+                            </button>
+                          </td>
                           <td className="px-4 py-4 text-sm text-gray-600">
                             {new Date(supplier.lastModifiedTime).toLocaleString()}
                           </td>
@@ -557,6 +814,77 @@ const SupplierTracker = () => {
           </div>
         </div>
       </div>
+
+      {/* Note Modal */}
+      {showNoteModal && currentNoteSupplier && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <MessageSquare className="w-6 h-6" />
+                Notes for {currentNoteSupplier.supplierName || 'Supplier'}
+              </h2>
+            </div>
+            
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {/* Existing Notes */}
+              {currentNoteSupplier.notes && currentNoteSupplier.notes.length > 0 ? (
+                <div className="mb-6 space-y-3">
+                  <h3 className="font-semibold text-gray-700 mb-3">Previous Notes:</h3>
+                  {currentNoteSupplier.notes.map((note) => (
+                    <div key={note.id} className="bg-gray-50 rounded-lg p-4 border-l-4 border-indigo-500">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-semibold text-indigo-600">{note.user}</span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(note.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-gray-700">{note.text}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mb-6 text-center text-gray-500 py-4">
+                  No notes yet. Add the first note below.
+                </div>
+              )}
+
+              {/* Add New Note */}
+              <div>
+                <label className="block font-semibold text-gray-700 mb-2">
+                  Add New Note:
+                </label>
+                <textarea
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                  rows="4"
+                  placeholder="Enter your note here..."
+                />
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowNoteModal(false);
+                  setNewNoteText('');
+                  setCurrentNoteSupplier(null);
+                }}
+                className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={addNote}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Add Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
