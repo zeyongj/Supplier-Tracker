@@ -889,47 +889,5 @@ const SupplierTracker = () => {
   );
 };
 
-import emailjs from '@emailjs/browser';
-
-// Initialize EmailJS
-emailjs.init('0jFdO4TX9CMMKcLfe');
-
-// Update performBackup function:
-const performBackup = async () => {
-  exportCSV();
-  
-  // Generate report
-  const report = `
-    Daily Supplier Compliance Report
-    Date: ${new Date().toLocaleDateString()}
-    
-    Total Suppliers: ${totalCount}
-    Completed: ${completedCount}
-    Progress: ${progressPercent.toFixed(1)}%
-    
-    New Suppliers: ${suppliers.filter(s => s.newSupplier === 'Yes').length}
-  `;
-
-  try {
-    await emailjs.send(
-      'YOUR_SERVICE_ID',
-      'YOUR_TEMPLATE_ID',
-      {
-        to_email: 'zeyong.jin@ranchogroup.com',
-        subject: `Daily Supplier Report - ${new Date().toLocaleDateString()}`,
-        message: report,
-        completed: completedCount,
-        total: totalCount,
-        percentage: progressPercent.toFixed(1)
-      }
-    );
-    console.log('Report email sent successfully');
-  } catch (error) {
-    console.error('Email error:', error);
-  }
-  
-  setLastBackup(new Date().toDateString());
-  saveData();
-};
 
 export default SupplierTracker;
