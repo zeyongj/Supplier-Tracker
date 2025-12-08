@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, LogOut, Plus, Trash2, Check, X, Clock, TrendingUp, MessageSquare, Filter, ArrowUpDown } from 'lucide-react';
+import { Download, Upload, LogOut, Plus, Trash2, Check, X, Clock, TrendingUp, MessageSquare, Filter, ArrowUpDown, AlertCircle, Building, User, Briefcase } from 'lucide-react';
 
 const SupplierTracker = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -20,6 +20,7 @@ const SupplierTracker = () => {
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterSupplierType, setFilterSupplierType] = useState('all');
   const [filterNewSupplier, setFilterNewSupplier] = useState('all');
 
   // Load data from storage on mount
@@ -71,6 +72,33 @@ const SupplierTracker = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Check for expired suppliers (over 1 year since last check)
+  const getExpiredSuppliers = () => {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    
+    return suppliers.filter(s => {
+      if (!s.setupInQflow || s.setupInQflow !== 'Yes') return false;
+      if (!s.lastComplianceCheck) return false;
+      const lastCheckDate = new Date(s.lastComplianceCheck);
+      return lastCheckDate < oneYearAgo && s.completed;
+    });
+  };
+
+  const getDueSoonSuppliers = () => {
+    const elevenMonthsAgo = new Date();
+    elevenMonthsAgo.setMonth(elevenMonthsAgo.getMonth() - 11);
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    
+    return suppliers.filter(s => {
+      if (!s.setupInQflow || s.setupInQflow !== 'Yes') return false;
+      if (!s.lastComplianceCheck) return false;
+      const lastCheckDate = new Date(s.lastComplianceCheck);
+      return lastCheckDate >= oneYearAgo && lastCheckDate < elevenMonthsAgo && s.completed;
+    });
+  };
+
   // Auto-backup at 5 PM daily
   useEffect(() => {
     const checkBackup = () => {
@@ -111,10 +139,14 @@ const SupplierTracker = () => {
       id: Date.now(),
       supplierName: '',
       contactInfo: '',
+      supplierType: 'Company',
+      isNewSupplier: 'Yes',
+      labourInvolved: 'Yes',
+      setupInQflow: 'No',
       insuranceLiability: '',
       gstNumber: '',
       wcbClearance: '',
-      newSupplier: 'Yes',
+      lastComplianceCheck: null,
       notes: [],
       lastModifiedTime: new Date().toISOString(),
       lastModifiedUser: currentUser,
@@ -139,18 +171,29 @@ const SupplierTracker = () => {
   };
 
   const saveEdit = () => {
-    const completed = !!(
-      editingData.insuranceLiability?.trim() &&
-      editingData.gstNumber?.trim() &&
-      editingData.wcbClearance?.trim()
-    );
+    let completed = false;
+    
+    // If labour not involved, can be completed without compliance docs
+    if (editingData.labourInvolved === 'No') {
+      completed = true;
+    } else {
+      // If labour involved, need all three documents
+      completed = !!(
+        editingData.insuranceLiability?.trim() &&
+        editingData.gstNumber?.trim() &&
+        editingData.wcbClearance?.trim()
+      );
+    }
 
     const updatedSupplier = {
       ...editingData,
-      newSupplier: editingData.newSupplier || 'No', // Ensure newSupplier is saved
       lastModifiedTime: new Date().toISOString(),
       lastModifiedUser: currentUser,
-      completed
+      completed,
+      // If completing for first time or re-completing, update lastComplianceCheck
+      lastComplianceCheck: completed && editingData.setupInQflow === 'Yes' 
+        ? new Date().toISOString() 
+        : editingData.lastComplianceCheck
     };
 
     setSuppliers(suppliers.map(s => 
@@ -207,10 +250,14 @@ const SupplierTracker = () => {
     const headers = [
       'Supplier Name',
       'Contact Info',
+      'Supplier Type',
+      'New/Existing',
+      'Labour Involved',
+      'Setup in InQFlow',
       'Insurance Liability',
       'GST Number',
       'WCB Clearance Letter',
-      'New Supplier',
+      'Last Compliance Check',
       'Notes',
       'Last Modified Time',
       'Last Modified User',
@@ -220,10 +267,14 @@ const SupplierTracker = () => {
     const rows = suppliers.map(s => [
       s.supplierName,
       s.contactInfo,
+      s.supplierType,
+      s.isNewSupplier,
+      s.labourInvolved,
+      s.setupInQflow,
       s.insuranceLiability,
       s.gstNumber,
       s.wcbClearance,
-      s.newSupplier,
+      s.lastComplianceCheck ? new Date(s.lastComplianceCheck).toLocaleDateString() : '',
       (s.notes || []).map(n => `[${new Date(n.timestamp).toLocaleString()}] ${n.user}: ${n.text}`).join(' | '),
       new Date(s.lastModifiedTime).toLocaleString(),
       s.lastModifiedUser,
@@ -265,7 +316,7 @@ const SupplierTracker = () => {
             v.replace(/^"|"$/g, '').replace(/""/g, '"').trim()
           );
           
-          const notesText = values[6] || '';
+          const notesText = values[10] || '';
           const notes = notesText ? notesText.split(' | ').map((noteStr, i) => ({
             id: Date.now() + i,
             text: noteStr.substring(noteStr.indexOf(': ') + 2),
@@ -277,14 +328,18 @@ const SupplierTracker = () => {
             id: Date.now() + index,
             supplierName: values[0] || '',
             contactInfo: values[1] || '',
-            insuranceLiability: values[2] || '',
-            gstNumber: values[3] || '',
-            wcbClearance: values[4] || '',
-            newSupplier: values[5] || 'No',
+            supplierType: values[2] || 'Company',
+            isNewSupplier: values[3] || 'Yes',
+            labourInvolved: values[4] || 'Yes',
+            setupInQflow: values[5] || 'No',
+            insuranceLiability: values[6] || '',
+            gstNumber: values[7] || '',
+            wcbClearance: values[8] || '',
+            lastComplianceCheck: values[9] || null,
             notes: notes,
             lastModifiedTime: new Date().toISOString(),
             lastModifiedUser: currentUser,
-            completed: values[9] === 'Yes'
+            completed: values[13] === 'Yes'
           };
         });
 
@@ -309,7 +364,6 @@ const SupplierTracker = () => {
         const text = event.target.result;
         const lines = text.split('\n').filter(line => line.trim());
         
-        // Skip header row and import
         const newSuppliers = lines.slice(1).map((line, index) => {
           const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)?.map(v => 
             v.replace(/^"|"$/g, '').replace(/""/g, '"').trim()
@@ -319,10 +373,14 @@ const SupplierTracker = () => {
             id: Date.now() + index + Math.random(),
             supplierName: values[0] || '',
             contactInfo: values[1] || '',
+            supplierType: 'Company',
+            isNewSupplier: 'Yes',
+            labourInvolved: 'Yes',
+            setupInQflow: 'No',
             insuranceLiability: '',
             gstNumber: '',
             wcbClearance: '',
-            newSupplier: 'No', // All imported suppliers marked as "No"
+            lastComplianceCheck: null,
             notes: [],
             lastModifiedTime: new Date().toISOString(),
             lastModifiedUser: currentUser,
@@ -330,7 +388,6 @@ const SupplierTracker = () => {
           };
         });
 
-        // Add to existing suppliers
         setSuppliers([...suppliers, ...newSuppliers]);
         setShowImportList(false);
         alert(`${newSuppliers.length} suppliers imported successfully!`);
@@ -345,18 +402,20 @@ const SupplierTracker = () => {
   const getFilteredAndSortedSuppliers = () => {
     let filtered = [...suppliers];
 
-    // Apply filters
     if (filterStatus !== 'all') {
       filtered = filtered.filter(s => 
         filterStatus === 'completed' ? s.completed : !s.completed
       );
     }
 
-    if (filterNewSupplier !== 'all') {
-      filtered = filtered.filter(s => s.newSupplier === filterNewSupplier);
+    if (filterSupplierType !== 'all') {
+      filtered = filtered.filter(s => s.supplierType === filterSupplierType);
     }
 
-    // Apply sorting
+    if (filterNewSupplier !== 'all') {
+      filtered = filtered.filter(s => s.isNewSupplier === filterNewSupplier);
+    }
+
     filtered.sort((a, b) => {
       let compareValue = 0;
       
@@ -364,8 +423,10 @@ const SupplierTracker = () => {
         compareValue = (a.supplierName || '').localeCompare(b.supplierName || '');
       } else if (sortBy === 'status') {
         compareValue = (a.completed === b.completed) ? 0 : a.completed ? -1 : 1;
-      } else if (sortBy === 'newSupplier') {
-        compareValue = (a.newSupplier || '').localeCompare(b.newSupplier || '');
+      } else if (sortBy === 'type') {
+        compareValue = (a.supplierType || '').localeCompare(b.supplierType || '');
+      } else if (sortBy === 'new') {
+        compareValue = (a.isNewSupplier || '').localeCompare(b.isNewSupplier || '');
       }
 
       return sortOrder === 'asc' ? compareValue : -compareValue;
@@ -374,10 +435,16 @@ const SupplierTracker = () => {
     return filtered;
   };
 
+  const newSuppliers = suppliers.filter(s => s.isNewSupplier === 'Yes');
+  const oldSuppliers = suppliers.filter(s => s.isNewSupplier === 'No');
+  const notSetupCount = suppliers.filter(s => s.setupInQflow === 'No').length;
+  const setupCount = suppliers.filter(s => s.setupInQflow === 'Yes').length;
   const completedCount = suppliers.filter(s => s.completed).length;
   const totalCount = suppliers.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   const filteredSuppliers = getFilteredAndSortedSuppliers();
+  const expiredSuppliers = getExpiredSuppliers();
+  const dueSoonSuppliers = getDueSoonSuppliers();
 
   if (!isLoggedIn) {
     return (
@@ -433,7 +500,7 @@ const SupplierTracker = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
-      <div className="max-w-[1800px] mx-auto">
+      <div className="max-w-[1900px] mx-auto">
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
@@ -471,33 +538,121 @@ const SupplierTracker = () => {
             </div>
           </div>
 
-          {/* Progress Bar */}
-          <div className="bg-gray-50 rounded-xl p-4">
-            <div className="flex justify-between items-center mb-2">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-indigo-600" />
-                <span className="font-semibold text-gray-700">Overall Progress</span>
+          {/* Progress and Statistics Dashboard */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            {/* Overall Progress */}
+            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4 border-2 border-indigo-200">
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-indigo-600" />
+                  <span className="font-semibold text-gray-700">Overall Progress</span>
+                </div>
+                <span className="text-2xl font-bold text-indigo-600">
+                  {progressPercent.toFixed(1)}%
+                </span>
               </div>
-              <span className="text-2xl font-bold text-indigo-600">
-                {progressPercent.toFixed(1)}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-indigo-500 to-purple-600 h-full transition-all duration-500 flex items-center justify-end pr-2"
-                style={{ width: `${progressPercent}%` }}
-              >
-                {progressPercent > 10 && (
-                  <span className="text-xs text-white font-semibold">
-                    {completedCount}/{totalCount}
-                  </span>
-                )}
+              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-2">
+                <div
+                  className="bg-gradient-to-r from-indigo-500 to-purple-600 h-full transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="text-sm text-gray-600">
+                {completedCount} of {totalCount} completed
               </div>
             </div>
-            <div className="text-sm text-gray-600 mt-2">
-              {completedCount} of {totalCount} suppliers completed
+
+            {/* New Suppliers Card */}
+            <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 border-2 border-blue-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Plus className="w-5 h-5 text-blue-600" />
+                <span className="font-semibold text-gray-700">New Suppliers</span>
+              </div>
+              <div className="text-3xl font-bold text-blue-600 mb-1">
+                {newSuppliers.length}
+              </div>
+              <div className="text-sm text-gray-600">
+                Marked as new
+              </div>
+            </div>
+
+            {/* Old Suppliers Card */}
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Briefcase className="w-5 h-5 text-green-600" />
+                <span className="font-semibold text-gray-700">Existing Suppliers</span>
+              </div>
+              <div className="text-3xl font-bold text-green-600 mb-1">
+                {oldSuppliers.length}
+              </div>
+              <div className="text-sm text-gray-600">
+                Marked as existing
+              </div>
+            </div>
+
+            {/* InQFlow Setup Status */}
+            <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl p-4 border-2 border-orange-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Check className="w-5 h-5 text-orange-600" />
+                <span className="font-semibold text-gray-700">InQFlow Setup</span>
+              </div>
+              <div className="text-lg font-bold text-orange-600 mb-1">
+                {setupCount} / {totalCount}
+              </div>
+              <div className="text-sm text-gray-600">
+                {notSetupCount} pending setup
+              </div>
             </div>
           </div>
+
+          {/* Compliance Alerts */}
+          {(expiredSuppliers.length > 0 || dueSoonSuppliers.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              {expiredSuppliers.length > 0 && (
+                <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                    <span className="font-bold text-red-700">⚠️ Compliance Expired</span>
+                  </div>
+                  <div className="text-sm text-gray-700 mb-2">
+                    These suppliers need re-compliance check (over 1 year):
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {expiredSuppliers.map(s => (
+                      <div key={s.id} className="text-sm bg-white rounded px-3 py-2 flex justify-between">
+                        <span className="font-medium">{s.supplierName}</span>
+                        <span className="text-red-600">
+                          {new Date(s.lastComplianceCheck).toLocaleDateString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {dueSoonSuppliers.length > 0 && (
+                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock className="w-5 h-5 text-yellow-600" />
+                    <span className="font-bold text-yellow-700">⏰ Due Soon</span>
+                  </div>
+                  <div className="text-sm text-gray-700 mb-2">
+                    These suppliers need check within 1 month:
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {dueSoonSuppliers.map(s => (
+                      <div key={s.id} className="text-sm bg-white rounded px-3 py-2 flex justify-between">
+                        <span className="font-medium">{s.supplierName}</span>
+                        <span className="text-yellow-600">
+                          {new Date(s.lastComplianceCheck).toLocaleDateString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {saveStatus && (
             <div className="mt-4 text-sm text-green-600 font-medium">
@@ -545,7 +700,7 @@ const SupplierTracker = () => {
                 📋 Upload Supplier List CSV (Supplier Name, Contact Info)
               </label>
               <p className="text-sm text-gray-600 mb-3">
-                Upload a CSV with columns: Supplier Name, Contact Info. All suppliers will be marked as "No" in New Supplier column.
+                Upload a CSV with columns: Supplier Name, Contact Info. All suppliers will be marked as not setup in InQFlow.
               </p>
               <input
                 type="file"
@@ -591,13 +746,23 @@ const SupplierTracker = () => {
             </select>
 
             <select
+              value={filterSupplierType}
+              onChange={(e) => setFilterSupplierType(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Types</option>
+              <option value="Company">Company</option>
+              <option value="Individual">Individual</option>
+            </select>
+
+            <select
               value={filterNewSupplier}
               onChange={(e) => setFilterNewSupplier(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="all">All Suppliers</option>
-              <option value="Yes">New Suppliers</option>
-              <option value="No">Existing Suppliers</option>
+              <option value="all">All Suppliers (New & Existing)</option>
+              <option value="Yes">New Suppliers Only</option>
+              <option value="No">Existing Suppliers Only</option>
             </select>
 
             <div className="flex items-center gap-2 ml-4">
@@ -612,7 +777,8 @@ const SupplierTracker = () => {
             >
               <option value="name">Supplier Name</option>
               <option value="status">Completion Status</option>
-              <option value="newSupplier">New Supplier</option>
+              <option value="type">Supplier Type</option>
+              <option value="new">New/Existing</option>
             </select>
 
             <button
@@ -634,23 +800,27 @@ const SupplierTracker = () => {
             <table className="w-full">
               <thead className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
                 <tr>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Status</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Supplier Name</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Contact Info</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Insurance</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">GST Number</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">WCB Clearance</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">New Supplier</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Notes</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Last Modified</th>
-                  <th className="px-4 py-4 text-left text-sm font-semibold">Modified By</th>
-                  <th className="px-4 py-4 text-center text-sm font-semibold">Actions</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Status</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Supplier Name</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Contact Info</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Type</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">New/Existing</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Labour</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">InQFlow</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Insurance</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">GST</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">WCB</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Last Check</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Notes</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">Modified</th>
+                  <th className="px-3 py-4 text-left text-xs font-semibold">By</th>
+                  <th className="px-3 py-4 text-center text-xs font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredSuppliers.length === 0 ? (
                   <tr>
-                    <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
+                    <td colSpan="15" className="px-4 py-12 text-center text-gray-500">
                       {suppliers.length === 0 
                         ? "No suppliers yet. Click 'Add Supplier' to get started."
                         : "No suppliers match the current filters."}
@@ -659,100 +829,138 @@ const SupplierTracker = () => {
                 ) : (
                   filteredSuppliers.map((supplier) => (
                     <tr key={supplier.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-4">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      <td className="px-3 py-3">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
                           supplier.completed ? 'bg-green-100' : 'bg-red-100'
                         }`}>
                           {supplier.completed ? (
-                            <Check className="w-5 h-5 text-green-600" />
+                            <Check className="w-4 h-4 text-green-600" />
                           ) : (
-                            <X className="w-5 h-5 text-red-600" />
+                            <X className="w-4 h-4 text-red-600" />
                           )}
                         </div>
                       </td>
                       {editingId === supplier.id ? (
                         <>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
                             <input
                               type="text"
                               value={editingData.supplierName}
                               onChange={(e) => setEditingData({...editingData, supplierName: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                              placeholder="Supplier name"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                              placeholder="Name"
                             />
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
                             <input
                               type="text"
                               value={editingData.contactInfo}
                               onChange={(e) => setEditingData({...editingData, contactInfo: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                              placeholder="Contact info"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                              placeholder="Contact"
                             />
                           </td>
-                          <td className="px-4 py-4">
-                            <input
-                              type="text"
-                              value={editingData.insuranceLiability}
-                              onChange={(e) => setEditingData({...editingData, insuranceLiability: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                              placeholder="Insurance #"
-                            />
-                          </td>
-                          <td className="px-4 py-4">
-                            <input
-                              type="text"
-                              value={editingData.gstNumber}
-                              onChange={(e) => setEditingData({...editingData, gstNumber: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                              placeholder="GST #"
-                            />
-                          </td>
-                          <td className="px-4 py-4">
-                            <input
-                              type="text"
-                              value={editingData.wcbClearance}
-                              onChange={(e) => setEditingData({...editingData, wcbClearance: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                              placeholder="WCB #"
-                            />
-                          </td>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
                             <select
-                              value={editingData.newSupplier}
-                              onChange={(e) => setEditingData({...editingData, newSupplier: e.target.value})}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                              value={editingData.supplierType}
+                              onChange={(e) => setEditingData({...editingData, supplierType: e.target.value})}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                            >
+                              <option value="Company">Company</option>
+                              <option value="Individual">Individual</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-3">
+                            <select
+                              value={editingData.isNewSupplier}
+                              onChange={(e) => setEditingData({...editingData, isNewSupplier: e.target.value})}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                            >
+                              <option value="Yes">New</option>
+                              <option value="No">Existing</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-3">
+                            <select
+                              value={editingData.labourInvolved}
+                              onChange={(e) => setEditingData({...editingData, labourInvolved: e.target.value})}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
                             >
                               <option value="Yes">Yes</option>
                               <option value="No">No</option>
                             </select>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
+                            <select
+                              value={editingData.setupInQflow}
+                              onChange={(e) => setEditingData({...editingData, setupInQflow: e.target.value})}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                            >
+                              <option value="No">No</option>
+                              <option value="Yes">Yes</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              type="text"
+                              value={editingData.insuranceLiability}
+                              onChange={(e) => setEditingData({...editingData, insuranceLiability: e.target.value})}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                              placeholder="Insurance"
+                              disabled={editingData.labourInvolved === 'No'}
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              type="text"
+                              value={editingData.gstNumber}
+                              onChange={(e) => setEditingData({...editingData, gstNumber: e.target.value})}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                              placeholder="GST"
+                              disabled={editingData.labourInvolved === 'No'}
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              type="text"
+                              value={editingData.wcbClearance}
+                              onChange={(e) => setEditingData({...editingData, wcbClearance: e.target.value})}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500"
+                              placeholder="WCB"
+                              disabled={editingData.labourInvolved === 'No'}
+                            />
+                          </td>
+                          <td className="px-3 py-3 text-xs text-gray-600">
+                            {supplier.lastComplianceCheck 
+                              ? new Date(supplier.lastComplianceCheck).toLocaleDateString() 
+                              : '-'}
+                          </td>
+                          <td className="px-3 py-3">
                             <button
                               onClick={() => openNoteModal(supplier)}
-                              className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs"
                             >
-                              <MessageSquare className="w-4 h-4" />
+                              <MessageSquare className="w-3 h-3" />
                               {(supplier.notes || []).length}
                             </button>
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-600">
-                            {new Date(supplier.lastModifiedTime).toLocaleString()}
+                          <td className="px-3 py-3 text-xs text-gray-600">
+                            {new Date(supplier.lastModifiedTime).toLocaleDateString()}
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-600">
+                          <td className="px-3 py-3 text-xs text-gray-600">
                             {supplier.lastModifiedUser}
                           </td>
-                          <td className="px-4 py-4">
-                            <div className="flex justify-center gap-2">
+                          <td className="px-3 py-3">
+                            <div className="flex justify-center gap-1">
                               <button
                                 onClick={saveEdit}
-                                className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                                className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
                               >
                                 Save
                               </button>
                               <button
                                 onClick={cancelEdit}
-                                className="px-3 py-1 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
+                                className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-xs"
                               >
                                 Cancel
                               </button>
@@ -761,46 +969,79 @@ const SupplierTracker = () => {
                         </>
                       ) : (
                         <>
-                          <td className="px-4 py-4 font-medium text-gray-900">{supplier.supplierName}</td>
-                          <td className="px-4 py-4 text-gray-700">{supplier.contactInfo}</td>
-                          <td className="px-4 py-4 text-gray-700">{supplier.insuranceLiability}</td>
-                          <td className="px-4 py-4 text-gray-700">{supplier.gstNumber}</td>
-                          <td className="px-4 py-4 text-gray-700">{supplier.wcbClearance}</td>
-                          <td className="px-4 py-4">
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              supplier.newSupplier === 'Yes' 
+                          <td className="px-3 py-3 font-medium text-sm text-gray-900">{supplier.supplierName}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700">{supplier.contactInfo}</td>
+                          <td className="px-3 py-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              supplier.supplierType === 'Company' 
                                 ? 'bg-blue-100 text-blue-700' 
-                                : 'bg-gray-100 text-gray-700'
+                                : 'bg-purple-100 text-purple-700'
                             }`}>
-                              {supplier.newSupplier}
+                              {supplier.supplierType === 'Company' ? <Building className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                              {supplier.supplierType}
                             </span>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              supplier.isNewSupplier === 'Yes' 
+                                ? 'bg-cyan-100 text-cyan-700' 
+                                : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {supplier.isNewSupplier === 'Yes' ? '🆕 New' : '✓ Existing'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              supplier.labourInvolved === 'Yes' 
+                                ? 'bg-orange-100 text-orange-700' 
+                                : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {supplier.labourInvolved}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              supplier.setupInQflow === 'Yes' 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {supplier.setupInQflow === 'Yes' ? '✓ Setup' : '⏳ Pending'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-700">{supplier.insuranceLiability || '-'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700">{supplier.gstNumber || '-'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700">{supplier.wcbClearance || '-'}</td>
+                          <td className="px-3 py-3 text-xs text-gray-600">
+                            {supplier.lastComplianceCheck 
+                              ? new Date(supplier.lastComplianceCheck).toLocaleDateString() 
+                              : '-'}
+                          </td>
+                          <td className="px-3 py-3">
                             <button
                               onClick={() => openNoteModal(supplier)}
-                              className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs"
                             >
-                              <MessageSquare className="w-4 h-4" />
+                              <MessageSquare className="w-3 h-3" />
                               {(supplier.notes || []).length}
                             </button>
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-600">
-                            {new Date(supplier.lastModifiedTime).toLocaleString()}
+                          <td className="px-3 py-3 text-xs text-gray-600">
+                            {new Date(supplier.lastModifiedTime).toLocaleDateString()}
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-600">{supplier.lastModifiedUser}</td>
-                          <td className="px-4 py-4">
-                            <div className="flex justify-center gap-2">
+                          <td className="px-3 py-3 text-xs text-gray-600">{supplier.lastModifiedUser}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex justify-center gap-1">
                               <button
                                 onClick={() => startEdit(supplier)}
-                                className="px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
+                                className="px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-xs"
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => deleteSupplier(supplier.id)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded-lg"
+                                className="p-1 text-red-600 hover:bg-red-50 rounded"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
                           </td>
@@ -827,7 +1068,6 @@ const SupplierTracker = () => {
             </div>
             
             <div className="p-6 max-h-[60vh] overflow-y-auto">
-              {/* Existing Notes */}
               {currentNoteSupplier.notes && currentNoteSupplier.notes.length > 0 ? (
                 <div className="mb-6 space-y-3">
                   <h3 className="font-semibold text-gray-700 mb-3">Previous Notes:</h3>
@@ -849,7 +1089,6 @@ const SupplierTracker = () => {
                 </div>
               )}
 
-              {/* Add New Note */}
               <div>
                 <label className="block font-semibold text-gray-700 mb-2">
                   Add New Note:
@@ -888,6 +1127,5 @@ const SupplierTracker = () => {
     </div>
   );
 };
-
 
 export default SupplierTracker;
