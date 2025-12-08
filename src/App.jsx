@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, LogOut, Plus, Trash2, Check, X, Clock, TrendingUp, MessageSquare, Filter, ArrowUpDown, AlertCircle, Building, User, Briefcase } from 'lucide-react';
+import { db } from './firebase';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 const SupplierTracker = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -23,23 +25,24 @@ const SupplierTracker = () => {
   const [filterSupplierType, setFilterSupplierType] = useState('all');
   const [filterNewSupplier, setFilterNewSupplier] = useState('all');
 
-  // Load data from storage on mount
+  // Load data from Firebase on mount
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const result = await window.storage.get('suppliers-data');
-        if (result) {
-          const data = JSON.parse(result.value);
-          setSuppliers(data.suppliers || []);
-          setLastBackup(data.lastBackup);
-        }
-      } catch (error) {
-        console.log('No existing data found, starting fresh');
+    const unsubscribe = onSnapshot(doc(db, 'suppliers', 'main'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSuppliers(data.suppliers || []);
+        setLastBackup(data.lastBackup);
+        console.log('✅ Data loaded from Firebase');
+      } else {
+        console.log('No data found, starting fresh');
       }
-    };
-    loadData();
+    }, (error) => {
+      console.error('❌ Firebase error:', error);
+    });
+  
+    return () => unsubscribe();
   }, []);
-
+  
   // Save data to storage whenever suppliers change
   useEffect(() => {
     if (suppliers.length > 0 || isLoggedIn) {
@@ -55,12 +58,13 @@ const SupplierTracker = () => {
         lastBackup,
         lastSaved: new Date().toISOString()
       };
-      await window.storage.set('suppliers-data', JSON.stringify(data));
-      setSaveStatus('All changes saved ✓');
+      await setDoc(doc(db, 'suppliers', 'main'), data);
+      setSaveStatus('All changes saved to cloud ✓');
       setTimeout(() => setSaveStatus(''), 2000);
+      console.log('✅ Data saved to Firebase');
     } catch (error) {
       setSaveStatus('Error saving data');
-      console.error('Save error:', error);
+      console.error('❌ Firebase save error:', error);
     }
   };
 
