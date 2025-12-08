@@ -298,11 +298,126 @@ const SupplierTracker = () => {
     a.click();
   };
 
-  const performBackup = () => {
-    exportCSV();
-    setLastBackup(new Date().toDateString());
-    saveData();
-    console.log('Backup performed and email would be sent to zeyong.jin@ranchogroup.com');
+  const performBackup = async () => {
+    try {
+      console.log('🔄 Starting daily backup and email report...');
+      
+      // Generate CSV
+      const headers = [
+        'Supplier Name',
+        'Contact Info',
+        'Supplier Type',
+        'New/Existing',
+        'Labour Involved',
+        'Setup in InQFlow',
+        'Insurance Liability',
+        'GST Number',
+        'WCB Clearance Letter',
+        'Last Compliance Check',
+        'Completed'
+      ];
+  
+      const rows = suppliers.map(s => [
+        s.supplierName,
+        s.contactInfo,
+        s.supplierType,
+        s.isNewSupplier,
+        s.labourInvolved,
+        s.setupInQflow,
+        s.insuranceLiability,
+        s.gstNumber,
+        s.wcbClearance,
+        s.lastComplianceCheck ? new Date(s.lastComplianceCheck).toLocaleDateString() : '',
+        s.completed ? 'Yes' : 'No'
+      ]);
+  
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+  
+      // Calculate statistics
+      const completedCount = suppliers.filter(s => s.completed).length;
+      const totalCount = suppliers.length;
+      const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+      const newSuppliersCount = suppliers.filter(s => s.isNewSupplier === 'Yes').length;
+      const existingSuppliersCount = suppliers.filter(s => s.isNewSupplier === 'No').length;
+      const setupInQflowCount = suppliers.filter(s => s.setupInQflow === 'Yes').length;
+      const pendingSetupCount = suppliers.filter(s => s.setupInQflow === 'No').length;
+      
+      const expiredSuppliers = getExpiredSuppliers();
+      const dueSoonSuppliers = getDueSoonSuppliers();
+      
+      // Format expired suppliers list
+      const expiredList = expiredSuppliers.length > 0 
+        ? expiredSuppliers.map(s => 
+            `  • ${s.supplierName} - Last checked: ${new Date(s.lastComplianceCheck).toLocaleDateString()}`
+          ).join('\n')
+        : 'None';
+      
+      // Format due soon suppliers list
+      const dueSoonList = dueSoonSuppliers.length > 0
+        ? dueSoonSuppliers.map(s => 
+            `  • ${s.supplierName} - Last checked: ${new Date(s.lastComplianceCheck).toLocaleDateString()}`
+          ).join('\n')
+        : 'None';
+  
+      const now = new Date();
+      const reportDate = now.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      const reportTime = now.toLocaleTimeString('en-US');
+  
+      // Prepare email parameters
+      const templateParams = {
+        to_email: 'zeyong.jin@ranchogroup.com',
+        report_date: reportDate,
+        report_time: reportTime,
+        total_suppliers: totalCount,
+        completed_suppliers: completedCount,
+        progress_percentage: progressPercent.toFixed(1),
+        new_suppliers: newSuppliersCount,
+        existing_suppliers: existingSuppliersCount,
+        setup_in_qflow: setupInQflowCount,
+        pending_setup: pendingSetupCount,
+        expired_count: expiredSuppliers.length,
+        due_soon_count: dueSoonSuppliers.length,
+        expired_list: expiredList,
+        due_soon_list: dueSoonList,
+        if_expired: expiredSuppliers.length > 0,
+        if_due_soon: dueSoonSuppliers.length > 0
+      };
+  
+      // Send email via EmailJS
+      console.log('📧 Sending email report...');
+      const result = await emailjs.send(
+        'service_r7ntn59',  // Your service ID
+        'template_t3yjp08', // Your template ID
+        templateParams
+      );
+  
+      if (result.status === 200) {
+        console.log('✅ Email sent successfully!', result);
+        alert('✅ Daily report email sent successfully to zeyong.jin@ranchogroup.com!');
+        
+        // Download CSV backup
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `supplier_backup_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        
+        setLastBackup(new Date().toDateString());
+        saveData();
+      }
+    } catch (error) {
+      console.error('❌ Email sending failed:', error);
+      alert(`Email failed to send: ${error.text || error.message}`);
+    }
   };
 
   const importCSV = (e) => {
