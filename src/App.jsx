@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, LogOut, Plus, Trash2, Check, X, Clock, TrendingUp, MessageSquare, Filter, ArrowUpDown, AlertCircle, Building, User, Briefcase } from 'lucide-react';
 import { db } from './firebase';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const SupplierTracker = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -24,8 +24,6 @@ const SupplierTracker = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterSupplierType, setFilterSupplierType] = useState('all');
   const [filterNewSupplier, setFilterNewSupplier] = useState('all');
-
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // Load data from Firebase on mount (ONE-TIME READ)
 useEffect(() => {
