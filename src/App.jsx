@@ -25,9 +25,15 @@ const SupplierTracker = () => {
   const [filterSupplierType, setFilterSupplierType] = useState('all');
   const [filterNewSupplier, setFilterNewSupplier] = useState('all');
 
-  // Load data from Firebase on mount
-  useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'suppliers', 'main'), (docSnap) => {
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+
+// Load data from Firebase on mount (ONE-TIME READ)
+useEffect(() => {
+  const loadData = async () => {
+    try {
+      const docRef = doc(db, 'suppliers', 'main');
+      const docSnap = await getDoc(docRef);
+      
       if (docSnap.exists()) {
         const data = docSnap.data();
         setSuppliers(data.suppliers || []);
@@ -36,12 +42,31 @@ const SupplierTracker = () => {
       } else {
         console.log('No data found, starting fresh');
       }
-    }, (error) => {
+    } catch (error) {
       console.error('❌ Firebase error:', error);
-    });
+    }
+  };
   
-    return () => unsubscribe();
-  }, []);
+  loadData();
+}, []);
+
+// Add manual refresh button if needed
+const refreshData = async () => {
+  try {
+    const docRef = doc(db, 'suppliers', 'main');
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      setSuppliers(data.suppliers || []);
+      setLastBackup(data.lastBackup);
+      alert('✅ Data refreshed!');
+    }
+  } catch (error) {
+    alert('❌ Failed to refresh data');
+    console.error(error);
+  }
+};
   
   // Save data to storage whenever suppliers change
   useEffect(() => {
