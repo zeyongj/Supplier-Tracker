@@ -497,6 +497,13 @@ const SupplierTracker = () => {
               Sign In
             </button>
           </div>
+          
+          {/* Login Page Footer */}
+          <div className="mt-6 text-center">
+            <p className="text-xs text-gray-500">
+              © 2025 Zeyong Jin. All Rights Reserved.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -1060,76 +1067,83 @@ const SupplierTracker = () => {
         </div>
       </div>
 
-      {/* Note Modal */}
-      {showNoteModal && currentNoteSupplier && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <MessageSquare className="w-6 h-6" />
-                Notes for {currentNoteSupplier.supplierName || 'Supplier'}
-              </h2>
-            </div>
-            
-            <div className="p-6 max-h-[60vh] overflow-y-auto">
-              {currentNoteSupplier.notes && currentNoteSupplier.notes.length > 0 ? (
-                <div className="mb-6 space-y-3">
-                  <h3 className="font-semibold text-gray-700 mb-3">Previous Notes:</h3>
-                  {currentNoteSupplier.notes.map((note) => (
-                    <div key={note.id} className="bg-gray-50 rounded-lg p-4 border-l-4 border-indigo-500">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="font-semibold text-indigo-600">{note.user}</span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(note.timestamp).toLocaleString()}
-                        </span>
+  {/* Note Modal */}
+        {showNoteModal && currentNoteSupplier && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <MessageSquare className="w-6 h-6" />
+                  Notes for {currentNoteSupplier.supplierName || 'Supplier'}
+                </h2>
+              </div>
+              
+              <div className="p-6 max-h-[60vh] overflow-y-auto">
+                {currentNoteSupplier.notes && currentNoteSupplier.notes.length > 0 ? (
+                  <div className="mb-6 space-y-3">
+                    <h3 className="font-semibold text-gray-700 mb-3">Previous Notes:</h3>
+                    {currentNoteSupplier.notes.map((note) => (
+                      <div key={note.id} className="bg-gray-50 rounded-lg p-4 border-l-4 border-indigo-500">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="font-semibold text-indigo-600">{note.user}</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(note.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-gray-700">{note.text}</p>
                       </div>
-                      <p className="text-gray-700">{note.text}</p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mb-6 text-center text-gray-500 py-4">
+                    No notes yet. Add the first note below.
+                  </div>
+                )}
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-2">
+                    Add New Note:
+                  </label>
+                  <textarea
+                    value={newNoteText}
+                    onChange={(e) => setNewNoteText(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                    rows="4"
+                    placeholder="Enter your note here..."
+                  />
                 </div>
-              ) : (
-                <div className="mb-6 text-center text-gray-500 py-4">
-                  No notes yet. Add the first note below.
-                </div>
-              )}
-
-              <div>
-                <label className="block font-semibold text-gray-700 mb-2">
-                  Add New Note:
-                </label>
-                <textarea
-                  value={newNoteText}
-                  onChange={(e) => setNewNoteText(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
-                  rows="4"
-                  placeholder="Enter your note here..."
-                />
+              </div>
+              <div className="bg-gray-50 p-6 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowNoteModal(false);
+                    setNewNoteText('');
+                    setCurrentNoteSupplier(null);
+                  }}
+                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={addNote}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  Add Note
+                </button>
               </div>
             </div>
-
-            <div className="bg-gray-50 p-6 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowNoteModal(false);
-                  setNewNoteText('');
-                  setCurrentNoteSupplier(null);
-                }}
-                className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={addNote}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Add Note
-              </button>
-            </div>
+          </div>
+        )}
+  
+        {/* Footer */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <div className="text-center">
+            <p className="text-sm text-gray-500">
+              © 2025 Zeyong Jin. All Rights Reserved.
+            </p>
           </div>
         </div>
-      )}
-    </div>
-  );
-};
-
-export default SupplierTracker;
+      </div>
+    );
+  };
+  
+  export default SupplierTracker;
