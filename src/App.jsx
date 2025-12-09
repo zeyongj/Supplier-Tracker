@@ -480,10 +480,18 @@ const SupplierTracker = () => {
               Sign In
             </button>
           </div>
+
+          {/* Login Page Footer */}
+          <div className="mt-6 text-center">
+            <p className="text-xs text-gray-500">
+              © 2025 Zeyong Jin. All Rights Reserved.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
@@ -914,7 +922,7 @@ const SupplierTracker = () => {
                 <li><strong>Required Docs:</strong> Insurance, GST, WCB (only if Labour Involved = Yes)</li>
                 <li><strong>Auto-Complete:</strong> If Labour = No, marked complete automatically</li>
                 <li><strong>Last Check Date:</strong> Recorded when supplier completed and setup in InQFlow</li>
-                <li><strong>Expiry Alerts:</strong> Red alert for >1 year, yellow for 11-12 months</li>
+                <li><strong>Expiry Alerts:</strong> Red alert for &gt;1 year, yellow for 11-12 months</li>
                 <li><strong>Re-check Board:</strong> Top dashboard shows suppliers needing re-compliance</li>
               </ul>
             </section>
@@ -981,3 +989,5 @@ const SupplierTracker = () => {
 </div>
     );
   };
+
+export default SupplierTracker;
