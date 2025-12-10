@@ -1,218 +1,218 @@
-# Supplier Tracker
+# Supplier Compliance Tracker
 
-Supplier Tracker is a web-based platform for managing supplier information, monitoring activity, and supporting accounts payable workflows. It is built as a modern single-page application using Vite and a JavaScript/React-style frontend stack, with Tailwind CSS for styling.
+A modern, responsive web application for managing supplier compliance tracking, built with React and Firebase.
 
----
+![Supplier Tracker](https://img.shields.io/badge/React-18.x-blue) ![Firebase](https://img.shields.io/badge/Firebase-Firestore-orange) ![Tailwind](https://img.shields.io/badge/Tailwind-CSS-cyan)
 
-## Table of Contents
+## 📋 Overview
 
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Running the App](#running-the-app)
-  - [Building for Production](#building-for-production)
-- [Project Structure](#project-structure)
-- [Usage](#usage)
-- [Development Notes](#development-notes)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+Supplier Compliance Tracker is a comprehensive platform designed to manage and monitor supplier compliance documentation for businesses handling 30,000+ suppliers. The application tracks insurance liability, GST numbers, WCB clearance letters, and automates compliance recheck notifications.
 
----
+## ✨ Features
 
-## Overview
+### Dashboard
+- **Progress Overview**: Visual progress bar showing completion percentage
+- **Statistics Cards**: Quick view of new suppliers, existing suppliers, InQFlow setup status, priority items, and recheck alerts
+- **Alert Panels**: 
+  - Expired Compliance (>1 year since last check)
+  - Due Soon (11-12 months since last check)
+  - Priority Items (flagged suppliers needing attention)
+- **Quick Actions**: Fast access to common operations
 
-Supplier Tracker is designed to help operations, finance, and accounts payable teams keep supplier data organized and accessible in one place. Typical use cases include:
+### Supplier Management
+- **Add Suppliers**: Single entry or bulk import via CSV
+- **Edit Suppliers**: Inline editing with auto-save
+- **Delete Suppliers**: With confirmation prompt
+- **Priority Flagging**: Star icon to mark urgent items
+- **Notes System**: Add timestamped notes with username tracking
 
-- Maintaining a unified list of suppliers/vendors
-- Searching and filtering suppliers quickly
-- Tracking key attributes (e.g., internal vs. external, individual vs. company)
-- Supporting invoice and payment workflows by keeping supplier metadata consistent
+### Compliance Tracking
+- **Required Documents**: Insurance Liability, GST Number, WCB Clearance
+- **Auto-Complete**: If Labour Involved = No, supplier is automatically marked complete
+- **Last Compliance Check**: Automatically recorded when supplier is completed and setup in InQFlow
+- **Expiry Alerts**: Visual indicators for suppliers needing compliance recheck
 
-The application is intended to be lightweight, fast, and easily deployable (e.g., via static hosting or GitHub Pages) thanks to the Vite-based build setup.
+### Data Management
+- **Auto-Save**: Changes saved to Firebase with 3-second debounce (prevents quota issues)
+- **Offline Support**: Local storage fallback when Firebase is unavailable
+- **CSV Export**: Full backup download anytime
+- **CSV Import**: Restore from backup or import new supplier lists
+- **Daily Reports**: Automated email reports at 5 PM (when app is open)
 
----
+### Search & Filter
+- **Real-time Search**: Search by name, contact, insurance, GST, WCB
+- **Multiple Filters**: Status, Type, New/Existing, Priority, Compliance
+- **Sorting**: By name, status, type, new/existing, priority, recheck status
+- **Pagination**: 50 suppliers per page for optimal performance
 
-## Features
-
-Current and planned capabilities include:
-
-- **Supplier Directory**
-  - Add, view, and update supplier records
-  - Capture key supplier details (name, type, notes, etc.)
-
-- **Search & Filter**
-  - Quickly locate suppliers by name or other attributes
-  - Support for basic filtering logic (e.g., internal vs. external)
-
-- **Category Support (Planned)**
-  - Distinguish between:
-    - Individuals
-    - Companies
-    - Internal entities (e.g., records containing “STRATA PLAN”)
-  - Future rules/heuristics for auto-categorization
-
-- **Modern UI**
-  - Responsive layout suitable for desktop use
-  - Tailwind-based styling for consistent design
-
-_(Note: The exact feature set will evolve as the project is developed.)_
-
----
-
-## Tech Stack
-
-- **Language:** JavaScript
-- **Build Tool / Dev Server:** Vite
-- **Styling:** Tailwind CSS (configured via `tailwind.config.js` and `postcss.config.js`)
-- **Bundler / Tooling:** Vite configuration in `vite.config.js`
-
----
-
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
-
-- **Node.js** (LTS version recommended)
-- **npm** (bundled with Node) or **yarn**
-
-Verify your versions:
-
-```bash
-node -v
-npm -v
-```
+- Node.js 16+ 
+- npm or yarn
+- Firebase account
 
 ### Installation
 
-Clone the repository and install dependencies:
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-repo/supplier-tracker.git
+   cd supplier-tracker
+   ```
 
-```bash
-git clone https://github.com/zeyongj/Supplier-Tracker.git
-cd Supplier-Tracker
-npm install
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure Firebase**
+   
+   Create `src/firebase.js`:
+   ```javascript
+   import { initializeApp } from 'firebase/app';
+   import { getFirestore } from 'firebase/firestore';
+
+   const firebaseConfig = {
+     apiKey: "YOUR_API_KEY",
+     authDomain: "YOUR_AUTH_DOMAIN",
+     projectId: "YOUR_PROJECT_ID",
+     storageBucket: "YOUR_STORAGE_BUCKET",
+     messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+     appId: "YOUR_APP_ID"
+   };
+
+   const app = initializeApp(firebaseConfig);
+   export const db = getFirestore(app);
+   ```
+
+4. **Configure EmailJS** (for daily reports)
+   
+   Update the EmailJS initialization in `App.jsx`:
+   ```javascript
+   emailjs.init('YOUR_EMAILJS_PUBLIC_KEY');
+   ```
+   
+   Update the service and template IDs in the `performBackup` function.
+
+5. **Start the development server**
+   ```bash
+   npm start
+   ```
+
+## 📖 User Guide
+
+### Login
+- **Username**: Enter your name
+- **Password**: `apvan2025`
+
+### Adding Suppliers
+
+#### Single Entry
+1. Click "Add Supplier" button
+2. Fill in supplier details
+3. Click "Save"
+
+#### Bulk Import
+1. Click "Template" to download CSV template
+2. Fill in the template with your data
+3. Click "Import List" and select your CSV file
+
+### CSV Template Columns
+| Column | Description | Values |
+|--------|-------------|--------|
+| Supplier Name | Company or individual name | Text |
+| Contact Info | Email or phone | Text |
+| Supplier Type | Type of supplier | Company / Individual |
+| New/Existing | Is this a new supplier? | Yes / No |
+| Labour Involved | Does work involve labour? | Yes / No |
+| Setup in InQFlow | Setup in InQFlow system? | Yes / No |
+| Insurance Liability | Insurance document reference | Text |
+| GST Number | GST registration number | Text |
+| WCB Clearance | WCB clearance reference | Text |
+| Priority | Flag as priority? | Yes / No |
+
+### Compliance Recheck System
+
+The system automatically tracks compliance expiry for completed suppliers:
+
+- **🔴 Expired (Red)**: Last compliance check was over 1 year ago - immediate recheck required
+- **🟡 Due Soon (Yellow)**: Last compliance check was 11-12 months ago - plan recheck soon
+- **✅ OK (Green)**: Compliance is current
+
+*Note: This only applies to suppliers marked as "Complete" with "Setup in InQFlow = Yes"*
+
+### Priority System
+- Click the ⭐ star icon to flag a supplier as priority
+- Priority suppliers appear in the dashboard alert panel
+- Use the "Priority" filter to show only flagged items
+
+### Notes
+- Click the 💬 notes icon on any supplier
+- Add timestamped notes with your username
+- View history of all previous notes
+
+### Daily Reports
+- **Automatic**: Sent at 5 PM daily (app must be open)
+- **Manual**: Click "Send Report" button anytime
+- Reports include progress stats, priority count, expired/due soon lists
+- CSV backup attached to email
+
+## 🔧 Technical Details
+
+### Tech Stack
+- **Frontend**: React 18
+- **Styling**: Tailwind CSS
+- **Icons**: Lucide React
+- **Database**: Firebase Firestore
+- **Email**: EmailJS
+
+### Firebase Structure
+```
+suppliers/
+  └── main/
+      ├── suppliers: []
+      ├── lastBackup: string
+      └── lastSaved: string
 ```
 
-> If you prefer `yarn`, you can run `yarn` instead of `npm install`.
+### Performance Optimizations
+- Debounced search (300ms delay)
+- Debounced Firebase saves (3 second delay)
+- Pagination (50 items per page)
+- Local storage caching
 
-### Running the App
+## 🔒 Security Notes
 
-To start the development server:
+- Change the default password in production
+- Configure Firebase security rules
+- Use environment variables for sensitive keys
 
-```bash
-npm run dev
-```
+## 📝 License
 
-By default, Vite will start a dev server (commonly on `http://localhost:5173` or similar). The terminal output will show the exact URL.
+© 2025 Zeyong Jin. All Rights Reserved.
 
-### Building for Production
+## 🆘 Troubleshooting
 
-To create an optimized production build:
+### Sync Failed
+- Check internet connection
+- Click "Retry Sync" button
+- Check Firebase quota limits
 
-```bash
-npm run build
-```
+### Import Failed
+- Verify CSV format matches template
+- Check for special characters in data
+- Ensure file encoding is UTF-8
 
-To preview the built assets locally:
+### Email Not Received
+- Check spam folder
+- Verify EmailJS configuration
+- Check EmailJS quota limits
 
-```bash
-npm run preview
-```
-
-This runs a local server that serves the production build so you can verify everything works before deployment.
-
----
-
-## Project Structure
-
-The high-level structure of the repo is:
-
-```text
-Supplier-Tracker/
-├─ src/
-│  ├─ ... (application source code: components, pages, hooks, etc.)
-├─ index.html
-├─ package.json
-├─ postcss.config.js
-├─ tailwind.config.js
-├─ vite.config.js
-└─ README.md
-```
-
-Key items:
-
-- `src/` – Main application source code (React-style components and application logic).
-- `index.html` – Entry HTML file used by Vite.
-- `package.json` – Project metadata, scripts, and dependencies.
-- `tailwind.config.js` / `postcss.config.js` – Tailwind and PostCSS configuration.
-- `vite.config.js` – Vite build and dev server configuration.
-- `README.md` – This documentation file.
-
-As the project evolves, you can expand this section with more detail on the internal structure (e.g., `src/components/`, `src/pages/`, `src/hooks/`, etc.).
+### Slow Performance
+- Use search/filters to reduce displayed items
+- Export and restore to clean old data
+- Check browser console for errors
 
 ---
 
-## Usage
-
-Once the dev server is running:
-
-1. Open the app in your browser (e.g., `http://localhost:5173`).
-2. Use the main interface to:
-   - Add a new supplier record (e.g., name, type, notes).
-   - Browse existing suppliers.
-   - Search for suppliers by name or keyword.
-3. (Planned) Apply filters or categories to segment suppliers:
-   - Individual vs. company
-   - Internal entities (e.g., “STRATA PLAN ...”)
-
-You can tailor this section to match the exact flows implemented in the UI (e.g., field names, buttons, table actions).
-
----
-
-## Development Notes
-
-- The project is scaffolded as a Vite app, so most standard Vite workflows and configuration patterns apply.
-- Tailwind utility classes are used for styling; if you modify `tailwind.config.js`, remember to restart the dev server.
-- If you add new dependencies, update `package.json` and ensure `npm install` succeeds cleanly.
-
-Potential enhancements you may consider documenting later:
-
-- State management approach (e.g., React hooks, context, etc.).
-- API integration or data persistence strategy.
-- Authentication/authorization if you later secure the app.
-
----
-
-## Roadmap
-
-Planned future improvements (suggested):
-
-- Supplier categorization rules (e.g., detect “STRATA PLAN” for internal entities).
-- Import/export of supplier lists (CSV/Excel).
-- Integration with invoice or AP systems.
-- Role-based access (AP, AR, PM, admin).
-- Tests (unit and integration) and CI integration.
-
-You can maintain this list via GitHub Issues and link to milestones as the project matures.
-
----
-
-## Contributing
-
-This is currently a personal/early-stage project. If you have suggestions or identify issues:
-
-1. Open an issue in the GitHub repository.
-2. Optionally, fork the repo and submit a pull request with a clear description of your changes.
-
----
-
-## License
-
-Zeyong Jin All Rights Reserved. 
-
-This repository is provided for reference only; reuse, modification, or redistribution of the code is not permitted without explicit permission from the author.
-
----
+**Questions or Issues?** Contact the development team or submit an issue on GitHub.
