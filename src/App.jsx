@@ -44,41 +44,67 @@ const SupplierTracker = () => {
 
   // Load data from Firebase or localStorage
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const docRef = doc(db, 'suppliers', 'main');
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setSuppliers(data.suppliers || []);
-          setLastBackup(data.lastBackup);
-          setUseLocalStorage(false);
-          setSyncStatus('synced');
-          console.log('✅ Data loaded from Firebase');
-        } else {
-          const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
-          if (localData) {
-            const parsed = JSON.parse(localData);
-            setSuppliers(parsed.suppliers || []);
-            setLastBackup(parsed.lastBackup);
-            setUseLocalStorage(true);
-            setSyncStatus('local');
-            console.log('📦 Data loaded from local storage');
-          }
+const loadData = async () => {
+  try {
+    // First try to load metadata
+    const metaRef = doc(db, 'suppliers', 'metadata');
+    const metaSnap = await getDoc(metaRef);
+    
+    if (metaSnap.exists()) {
+      const meta = metaSnap.data();
+      const allSuppliers = [];
+      
+      // Load all chunks
+      for (let i = 0; i < meta.totalChunks; i++) {
+        const chunkRef = doc(db, 'suppliers', `chunk_${i}`);
+        const chunkSnap = await getDoc(chunkRef);
+        if (chunkSnap.exists()) {
+          allSuppliers.push(...chunkSnap.data().suppliers);
         }
-      } catch (error) {
-        console.error('Firebase error, using local storage:', error);
+      }
+      
+      setSuppliers(allSuppliers);
+      setLastBackup(meta.lastBackup);
+      setUseLocalStorage(false);
+      setSyncStatus('synced');
+      console.log(`✅ Loaded ${allSuppliers.length} suppliers from Firebase`);
+    } else {
+      // Try old format (single document)
+      const docRef = doc(db, 'suppliers', 'main');
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSuppliers(data.suppliers || []);
+        setLastBackup(data.lastBackup);
+        setUseLocalStorage(false);
+        setSyncStatus('synced');
+        console.log('✅ Data loaded from Firebase');
+      } else {
+        // Load from localStorage
         const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (localData) {
           const parsed = JSON.parse(localData);
           setSuppliers(parsed.suppliers || []);
           setLastBackup(parsed.lastBackup);
           setUseLocalStorage(true);
-          setSyncStatus('offline');
+          setSyncStatus('local');
+          console.log('📦 Data loaded from local storage');
         }
       }
-    };
+    }
+  } catch (error) {
+    console.error('Firebase error, using local storage:', error);
+    const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (localData) {
+      const parsed = JSON.parse(localData);
+      setSuppliers(parsed.suppliers || []);
+      setLastBackup(parsed.lastBackup);
+      setUseLocalStorage(true);
+      setSyncStatus('offline');
+    }
+  }
+};
     loadData();
   }, []);
 
@@ -148,17 +174,35 @@ useEffect(() => {
 }, [searchQuery]);
 
 const saveToFirebase = async () => {
-  const data = {
-    suppliers,
-    lastBackup,
-    lastSaved: new Date().toISOString()
-  };
-
   try {
-    await setDoc(doc(db, 'suppliers', 'main'), data);
+    const CHUNK_SIZE = 1000; // 1000 suppliers per document
+    const chunks = [];
+    
+    for (let i = 0; i < suppliers.length; i += CHUNK_SIZE) {
+      chunks.push(suppliers.slice(i, i + CHUNK_SIZE));
+    }
+    
+    // Save each chunk as a separate document
+    for (let i = 0; i < chunks.length; i++) {
+      await setDoc(doc(db, 'suppliers', `chunk_${i}`), {
+        suppliers: chunks[i],
+        chunkIndex: i,
+        totalChunks: chunks.length,
+        lastSaved: new Date().toISOString()
+      });
+    }
+    
+    // Save metadata
+    await setDoc(doc(db, 'suppliers', 'metadata'), {
+      totalChunks: chunks.length,
+      totalSuppliers: suppliers.length,
+      lastBackup,
+      lastSaved: new Date().toISOString()
+    });
+    
     setSyncStatus('synced');
     setUseLocalStorage(false);
-    console.log('✅ Synced to Firebase');
+    console.log(`✅ Synced to Firebase (${chunks.length} chunks)`);
   } catch (error) {
     console.error('Firebase sync failed:', error);
     setSyncStatus('offline');
@@ -166,23 +210,40 @@ const saveToFirebase = async () => {
   }
 };
 
-  const retrySyncToFirebase = async () => {
-    setSyncStatus('syncing');
-    try {
-      const data = {
-        suppliers,
-        lastBackup,
-        lastSaved: new Date().toISOString()
-      };
-      await setDoc(doc(db, 'suppliers', 'main'), data);
-      setSyncStatus('synced');
-      setUseLocalStorage(false);
-      alert('✅ Successfully synced to Firebase!');
-    } catch (error) {
-      setSyncStatus('offline');
-      alert('❌ Sync failed. Check your connection and try again.');
+const retrySyncToFirebase = async () => {
+  setSyncStatus('syncing');
+  try {
+    const CHUNK_SIZE = 1000;
+    const chunks = [];
+    
+    for (let i = 0; i < suppliers.length; i += CHUNK_SIZE) {
+      chunks.push(suppliers.slice(i, i + CHUNK_SIZE));
     }
-  };
+    
+    for (let i = 0; i < chunks.length; i++) {
+      await setDoc(doc(db, 'suppliers', `chunk_${i}`), {
+        suppliers: chunks[i],
+        chunkIndex: i,
+        totalChunks: chunks.length,
+        lastSaved: new Date().toISOString()
+      });
+    }
+    
+    await setDoc(doc(db, 'suppliers', 'metadata'), {
+      totalChunks: chunks.length,
+      totalSuppliers: suppliers.length,
+      lastBackup,
+      lastSaved: new Date().toISOString()
+    });
+    
+    setSyncStatus('synced');
+    setUseLocalStorage(false);
+    alert(`✅ Successfully synced ${suppliers.length} suppliers to Firebase!`);
+  } catch (error) {
+    setSyncStatus('offline');
+    alert('❌ Sync failed: ' + error.message);
+  }
+};
 
   const handleLogin = () => {
     if (loginPwd === 'apvan2025' && loginName.trim()) {
@@ -265,11 +326,20 @@ const saveToFirebase = async () => {
     setEditingData({});
   };
 
-  const togglePriority = (id) => {
-    setSuppliers(suppliers.map(s => 
-      s.id === id ? { ...s, priority: !s.priority, lastModifiedUser: currentUser, lastModifiedTime: new Date().toISOString() } : s
-    ));
+const togglePriority = (id) => {
+  const updatedSuppliers = suppliers.map(s => 
+    s.id === id ? { ...s, priority: !s.priority, lastModifiedUser: currentUser, lastModifiedTime: new Date().toISOString() } : s
+  );
+  setSuppliers(updatedSuppliers);
+  
+  // Force immediate save to localStorage
+  const data = {
+    suppliers: updatedSuppliers,
+    lastBackup,
+    lastSaved: new Date().toISOString()
   };
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+};
 
   const openNoteModal = (supplier) => {
     setCurrentNoteSupplier(supplier);
@@ -370,75 +440,116 @@ Example Company 3,info@example3.com,Company,Yes,Yes,No,INS-12345,GST-67890,WCB-1
     }
   };
 
-  const importCSV = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target.result;
-        const lines = text.split('\n').filter(line => line.trim());
-        const imported = lines.slice(1).map((line, i) => {
-          const vals = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)?.map(v => v.replace(/^"|"$/g, '').replace(/""/g, '"').trim()) || [];
-          return {
-            id: Date.now() + i,
-            supplierName: vals[0] || '', contactInfo: vals[1] || '', supplierType: vals[2] || 'Company',
-            isNewSupplier: vals[3] || 'Yes', labourInvolved: vals[4] || 'Yes', setupInQflow: vals[5] || 'No',
-            insuranceLiability: vals[6] || '', gstNumber: vals[7] || '', wcbClearance: vals[8] || '',
-            lastComplianceCheck: vals[9] || null, priority: vals[10] === 'Yes',
-            notes: [], lastModifiedTime: new Date().toISOString(), lastModifiedUser: currentUser,
-            completed: vals[14] === 'Yes'
-          };
-        });
-        setSuppliers(imported);
-        setShowUpload(false);
-        alert(`✅ Restored ${imported.length} suppliers!`);
-      } catch (error) {
-        alert('Error importing. Check format.');
-      }
-    };
-    reader.readAsText(file);
+const importCSV = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const text = event.target.result;
+      const lines = text.split('\n').filter(line => line.trim());
+      const imported = lines.slice(1).map((line, i) => {
+        // Split by comma but handle quoted values
+        const vals = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let char of line) {
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            vals.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        vals.push(current.trim());
+        
+        return {
+          id: Date.now() + i,
+          supplierName: vals[0] || '',
+          contactInfo: vals[1] || '',
+          supplierType: vals[2] || 'Company',
+          isNewSupplier: vals[3] || 'Yes',
+          labourInvolved: vals[4] || 'Yes',
+          setupInQflow: vals[5] || 'No',
+          insuranceLiability: vals[6] || '',
+          gstNumber: vals[7] || '',
+          wcbClearance: vals[8] || '',
+          lastComplianceCheck: vals[9] || null,
+          priority: (vals[10] || '').toLowerCase() === 'yes',
+          notes: [],
+          lastModifiedTime: new Date().toISOString(),
+          lastModifiedUser: currentUser,
+          completed: (vals[14] || '').toLowerCase() === 'yes'
+        };
+      });
+      setSuppliers(imported);
+      setShowUpload(false);
+      alert(`✅ Restored ${imported.length} suppliers!`);
+    } catch (error) {
+      alert('Error importing. Check format.');
+    }
   };
+  reader.readAsText(file);
+};
 
   // Enhanced import function with all columns support
-  const importSupplierList = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target.result;
-        const lines = text.split('\n').filter(line => line.trim());
-        const newSuppliers = lines.slice(1).map((line, i) => {
-          const vals = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
-          return {
-            id: Date.now() + i + Math.random(),
-            supplierName: vals[0] || '',
-            contactInfo: vals[1] || '',
-            supplierType: vals[2] || 'Company',
-            isNewSupplier: vals[3] || 'Yes',
-            labourInvolved: vals[4] || 'Yes',
-            setupInQflow: vals[5] || 'No',
-            insuranceLiability: vals[6] || '',
-            gstNumber: vals[7] || '',
-            wcbClearance: vals[8] || '',
-            lastComplianceCheck: null,
-            priority: (vals[9] || '').toLowerCase() === 'yes',
-            notes: [],
-            lastModifiedTime: new Date().toISOString(),
-            lastModifiedUser: currentUser,
-            completed: false
-          };
-        });
-        setSuppliers([...suppliers, ...newSuppliers]);
-        setShowImportList(false);
-        alert(`✅ Imported ${newSuppliers.length} suppliers!`);
-      } catch (error) {
-        alert('Error importing list.');
-      }
-    };
-    reader.readAsText(file);
+const importSupplierList = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const text = event.target.result;
+      const lines = text.split('\n').filter(line => line.trim());
+      const newSuppliers = lines.slice(1).map((line, i) => {
+        // Split by comma but handle quoted values
+        const vals = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let char of line) {
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            vals.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        vals.push(current.trim()); // Push last value
+        
+        return {
+          id: Date.now() + i + Math.random(),
+          supplierName: vals[0] || '',
+          contactInfo: vals[1] || '',
+          supplierType: vals[2] || 'Company',
+          isNewSupplier: vals[3] || 'Yes',
+          labourInvolved: vals[4] || 'Yes',
+          setupInQflow: vals[5] || 'No',
+          insuranceLiability: vals[6] || '',
+          gstNumber: vals[7] || '',
+          wcbClearance: vals[8] || '',
+          lastComplianceCheck: null,
+          priority: (vals[9] || '').toLowerCase() === 'yes',
+          notes: [],
+          lastModifiedTime: new Date().toISOString(),
+          lastModifiedUser: currentUser,
+          completed: false
+        };
+      });
+      setSuppliers([...suppliers, ...newSuppliers]);
+      setShowImportList(false);
+      alert(`✅ Imported ${newSuppliers.length} suppliers!`);
+    } catch (error) {
+      alert('Error importing list.');
+    }
   };
+  reader.readAsText(file);
+};
 
   // Get suppliers that need recheck (over 1 year since last check) - only for completed suppliers
   const getExpiredSuppliers = () => {
